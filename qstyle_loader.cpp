@@ -161,10 +161,10 @@ private:
   {
     QList<QWidget*> result;
 
-    if ( item ? item->widget() : false )
+    if ( !!item ? !!item->widget() : false )
       result.append( getAllWidgets( item->widget() ) );
 
-    if ( item ? item->layout() : false )
+    if ( !!item ? !!item->layout() : false )
       result.append( getAllWidgets( item->layout() ) );
 
     return result;
