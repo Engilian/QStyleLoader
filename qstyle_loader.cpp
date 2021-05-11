@@ -204,7 +204,7 @@ protected:
         }
       } else if ( event->type() == QEvent::Type::DynamicPropertyChange ) {
         auto e = dynamic_cast<QDynamicPropertyChangeEvent*>( event );
-        if ( e->propertyName().indexOf( "_q_stylesheet" ) != 0  ) {
+        if ( e->propertyName().indexOf( "_q_" ) != 0  ) {
           if ( watcher == m_widget && ( m_allProperties || m_properties.contains( e->propertyName() ) ) ) {
             reloadWidgetStyle( m_widget );
           } else if ( m_updateChilds && ( m_allProperties || m_properties.contains( e->propertyName() ) ) ) {
