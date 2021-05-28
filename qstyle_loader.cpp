@@ -27,13 +27,14 @@
 class QStyleUpdater::_QStyleUpdater
     : public QObject
 {
-  QStyleUpdater *m_root;
-  QWidget       *m_widget;
-  bool          m_updateChilds;
-  bool          m_allProperties;
-  QSet<QString> m_properties;
-  std::function<bool(QWidget *)> m_filter;
-  mutable std::recursive_mutex m_locker;
+  QStyleUpdater                   *m_root;
+  QWidget                         *m_widget;
+  bool                            m_updateChilds;
+  bool                            m_allProperties;
+  QSet<QString>                   m_properties;
+  std::function<bool(QWidget *)>  m_filter;
+  QList<QWidget*>                 m_updateList;
+  mutable std::recursive_mutex    m_locker;
 public:
   _QStyleUpdater(QStyleUpdater *root)
     : QObject( root )
@@ -43,7 +44,7 @@ public:
     , m_allProperties( false )
     , m_properties()
   {
-
+    startTimer( 12 );
   }
   ~_QStyleUpdater() override
   {
@@ -127,7 +128,7 @@ private:
       return m_filter( child );
     } catch (...) { }
     return true;;
-  };
+  }
 
   QList<QWidget*> getAllWidgets(QWidget *parent) const
   {
@@ -189,28 +190,43 @@ protected:
     std::lock_guard<std::recursive_mutex> locker( m_locker );
 
     auto watcherWidget = qobject_cast<QWidget*>( watcher );
-    if ( !!watcherWidget ) {
+    if ( !!watcherWidget )
+    {
+      // ADD CHILD
       if ( event->type() == QEvent::Type::ChildAdded ) {
         auto e = dynamic_cast<QChildEvent*>( event );
         auto childWidget = qobject_cast<QWidget*>( e->child() );
         if ( childWidget ) {
           childWidget->installEventFilter( this );
         }
-      } else if ( event->type() == QEvent::Type::ChildRemoved ) {
+      }
+      // REMOVE CHILD
+      else if ( event->type() == QEvent::Type::ChildRemoved ) {
         auto e = dynamic_cast<QChildEvent*>( event );
         auto childWidget = qobject_cast<QWidget*>( e->child() );
         if ( childWidget ) {
+          m_updateList.removeAll( childWidget );
           childWidget->removeEventFilter( this );
         }
-      } else if ( event->type() == QEvent::Type::DynamicPropertyChange ) {
+      }
+      // PROPERTY
+      else if ( event->type() == QEvent::Type::DynamicPropertyChange ) {
         auto e = dynamic_cast<QDynamicPropertyChangeEvent*>( event );
+
+        // CHECK IS NOT QT PRIVATE PROPERTY
         if ( e->propertyName().indexOf( "_q_" ) != 0  ) {
+
+          // UPDATE CURRENT WIDGET
           if ( watcher == m_widget && ( m_allProperties || m_properties.contains( e->propertyName() ) ) ) {
-            reloadWidgetStyle( m_widget );
-          } else if ( m_updateChilds && ( m_allProperties || m_properties.contains( e->propertyName() ) ) ) {
+            // reloadWidgetStyle( m_widget );
+            m_updateList.append( m_widget );
+          }
+          // UPDATE CHILD WIDGET
+          else if ( m_updateChilds && ( m_allProperties || m_properties.contains( e->propertyName() ) ) ) {
             auto widget = qobject_cast<QWidget*>( watcher );
             if ( checkChildWidget( widget ) ) {
-              reloadWidgetStyle( widget );
+              // reloadWidgetStyle( widget );
+              m_updateList.append( widget );
             }
           }
         }
@@ -218,6 +234,21 @@ protected:
     }
 
     return QObject::eventFilter( watcher, event );
+  }
+
+  void timerEvent(QTimerEvent *event) override
+  {
+    while ( !m_updateList.isEmpty() ) {
+      QWidget *w = nullptr;
+      {
+        std::lock_guard<std::recursive_mutex> locker( m_locker );
+        w = m_updateList.takeFirst();
+      }
+
+      if ( w )
+        reloadWidgetStyle( w );
+    }
+    QObject::timerEvent( event );
   }
 };
 
