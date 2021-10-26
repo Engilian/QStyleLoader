@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <QObject>
 #include <functional>
 
@@ -94,11 +94,19 @@ signals:
   void styleReloaded(QWidget *widget);
 };
 
+///
+/// \brief The QStyleLoader class
+///
 class QStyleLoader final
     : public QObject
 {
   Q_OBJECT
 public:
+  ///
+  /// \brief Style loading elemen
+  /// \details Used to find and automatically reload
+  ///  styles when adding, modifying and deleting files.
+  ///
   struct Item
   {
     enum class Type
