@@ -44,7 +44,7 @@ public:
     , m_allProperties( false )
     , m_properties()
   {
-    startTimer( 12 );
+    startTimer( 50 );
   }
   ~_QStyleUpdater() override
   {
@@ -80,11 +80,11 @@ public slots:
   void setWidget(QWidget *widget)
   {
     std::lock_guard<std::recursive_mutex> locker( m_locker );
-    for ( auto w: getAllWidgets() )
+    for ( auto w: getAllChilds() )
       w->removeEventFilter( this );
 
     m_widget = widget;
-    for ( auto w: getAllWidgets() )
+    for ( auto w: getAllChilds() )
       w->installEventFilter( this );
   }
   void add(const QString &property)
@@ -137,8 +137,18 @@ private:
     if ( !!parent ) {
       result << parent;
 
-        for ( auto child: parent->findChildren<QWidget *>() ) {
-          result.append( getAllWidgets( child ) );
+
+        for ( auto child: parent->children() ) {
+          auto w = dynamic_cast<QWidget*>( child );
+          if ( !!w ) {
+            result.append( getAllWidgets( w ) );
+            continue;
+          }
+
+          auto layout = dynamic_cast<QLayout*>( child );
+          if ( !!layout ) {
+            result.append( getAllWidgets( layout ) );
+          }
         }
 
         if ( parent->layout() )
@@ -176,8 +186,27 @@ private:
     return getAllWidgets( m_widget ).toSet().toList();
   }
 
+  QList<QObject*> getAllChilds(QObject *obj) const
+  {
+    QList<QObject *> r;
+    if ( obj ) {
+      for ( auto child: obj->children() ) {
+        r << child;
+        r.append( getAllChilds( child ) );
+      }
+    }
+
+    return r;
+  }
+
+  QList<QObject*> getAllChilds() const
+  {
+    return getAllChilds( m_widget ).toSet().toList();
+  }
+
   void reloadWidgetStyle(QWidget *widget)
   {
+    //    qDebug() << "[STYLE] reloaded" << widget->objectName() << widget;
     widget->style()->unpolish( widget );
     widget->style()->polish( widget );
     emit m_root->styleReloaded( widget );
@@ -194,19 +223,22 @@ protected:
     {
       // ADD CHILD
       if ( event->type() == QEvent::Type::ChildAdded ) {
+//        qDebug() << "[ADDED] " << watcher << event;
         auto e = dynamic_cast<QChildEvent*>( event );
-        auto childWidget = qobject_cast<QWidget*>( e->child() );
-        if ( childWidget ) {
-          childWidget->installEventFilter( this );
-        }
+        e->child()->installEventFilter( this );
+        //        auto childWidget = qobject_cast<QWidget*>( e->child() );
+        //        if ( childWidget ) {
+        //          childWidget->installEventFilter( this );
+        //        }
       }
       // REMOVE CHILD
       else if ( event->type() == QEvent::Type::ChildRemoved ) {
+//        qDebug() << "[REMOVED] " << watcher << event;
         auto e = dynamic_cast<QChildEvent*>( event );
+        e->child()->removeEventFilter( this );
         auto childWidget = qobject_cast<QWidget*>( e->child() );
         if ( childWidget ) {
           m_updateList.removeAll( childWidget );
-          childWidget->removeEventFilter( this );
         }
       }
       // PROPERTY
@@ -225,7 +257,7 @@ protected:
           else if ( m_updateChilds && ( m_allProperties || m_properties.contains( e->propertyName() ) ) ) {
             auto widget = qobject_cast<QWidget*>( watcher );
             if ( checkChildWidget( widget ) ) {
-              // reloadWidgetStyle( widget );
+//               reloadWidgetStyle( widget );
               m_updateList.append( widget );
             }
           }
